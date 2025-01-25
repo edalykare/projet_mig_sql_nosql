@@ -1,7 +1,8 @@
-/Users/mohamedkare/Documents/projet_sql_nosql/data
+data/cartographie_formations_parcoursup.csv
 
 env_sql_nosql
 .env_sql_nosql/
 
+.DS_Store
 __pycache__/
 *.pyc
