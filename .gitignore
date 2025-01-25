@@ -1,0 +1,7 @@
+/Users/mohamedkare/Documents/projet_sql_nosql/data
+
+env_sql_nosql
+.env_sql_nosql/
+
+__pycache__/
+*.pyc
