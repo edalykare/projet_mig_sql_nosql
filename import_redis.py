@@ -1,45 +1,37 @@
 import pandas as pd
 import numpy as np
-from pymongo import MongoClient
+import redis
+import json
 import time
 from datetime import timedelta
 
-# Configuration de la connexion MongoDB
-mongo_params = {
+# Configuration de la connexion Redis
+redis_params = {
     "host": "localhost",
-    "port": 27017,
-    "username": "root",
-    "password": "password"
+    "port": 6379,
+    "db": 0
 }
 
-def connect_mongodb():
+def connect_redis():
     try:
-        # Construction de l'URI de connexion
-        client = MongoClient(
-            host=mongo_params["host"],
-            port=mongo_params["port"],
-            username=mongo_params["username"],
-            password=mongo_params["password"]
-        )
-        # Sélection de la base de données
-        db = client["formations_mongodb"]
-        return client, db
+        # Connexion à Redis
+        client = redis.Redis(**redis_params)
+        # Test de la connexion
+        client.ping()
+        return client
     except Exception as e:
-        print(f"Erreur de connexion à MongoDB: {e}")
-        return None, None
+        print(f"Erreur de connexion à Redis: {e}")
+        return None
 
 def import_csv(file_path):
     start_time = time.time()
     client = None
     
     try:
-        # Connexion à MongoDB
-        client, db = connect_mongodb()
+        # Connexion à Redis
+        client = connect_redis()
         if not client:
             return
-        
-        # Sélection de la collection
-        collection = db["formations_mongodb"]
         
         print("Début de la lecture du fichier CSV...")
         # Lecture du fichier CSV avec pandas
@@ -57,12 +49,16 @@ def import_csv(file_path):
         successful_rows = 0
         
         print("Début de l'importation des données...")
-        # Conversion des données en documents MongoDB
+        # Conversion des données pour Redis
         for _, row in df.iterrows():
             try:
                 total_rows += 1
-                # Conversion de la ligne en dictionnaire
-                document = {
+                
+                # Création d'un identifiant unique pour la formation
+                formation_id = f"formation:{row['Session']}:{row['Code interne Parcoursup de la formation']}"
+                
+                # Structure des données
+                formation_data = {
                     "session": row["Session"],
                     "etablissement": {
                         "id": row["Identifiant de l'établissement"],
@@ -102,8 +98,21 @@ def import_csv(file_path):
                     }
                 }
                 
-                # Insertion du document
-                collection.insert_one(document)
+                # Stockage dans Redis
+                # Utilisation de HSET pour stocker les données comme un hash
+                client.hset(formation_id, mapping={
+                    "data": json.dumps(formation_data, ensure_ascii=False)
+                })
+                
+                # Création d'index secondaires pour la recherche
+                # Index par établissement
+                client.sadd(f"etablissement:{row['Identifiant de l'établissement']}", formation_id)
+                # Index par région
+                if row["Région"]:
+                    client.sadd(f"region:{row['Région']}", formation_id)
+                # Index par session
+                client.sadd(f"session:{row['Session']}", formation_id)
+                
                 successful_rows += 1
                 
                 # Affichage de la progression tous les 1000 enregistrements
@@ -136,5 +145,5 @@ def import_csv(file_path):
 
 if __name__ == "__main__":
     # Importer les données
-    csv_file_path = "data/cartographie_formations_parcoursup.csv"  # Remplacez par le chemin de votre fichier CSV
+    csv_file_path = "votre_fichier.csv"  # Remplacez par le chemin de votre fichier CSV
     import_csv(csv_file_path)
